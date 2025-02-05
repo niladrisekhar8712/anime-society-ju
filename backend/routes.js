@@ -1,8 +1,35 @@
 import express from "express";
-import User from "./userModel.js"; 
-import Event from "./eventModel.js"; 
+import passport from "passport";
+import jwt from "jsonwebtoken";
+import User from "./userModel.js";
+import Event from "./eventModel.js";
 
 const router = express.Router();
+
+// Google OAuth Routes
+router.get(
+  "/auth/google",
+  passport.authenticate("google", { scope: ["profile", "email"] })
+);
+
+router.get(
+  "/auth/google/callback",
+  passport.authenticate("google", { failureRedirect: "/login" }),
+  (req, res) => {
+    // Generate a JWT token
+    const token = jwt.sign({ id: req.user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    res.json({ token });
+  }
+);
+
+router.get("/protected", (req, res, next) => {
+  passport.authenticate("jwt", { session: false }, (err, user) => {
+    if (err || !user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    res.json({ message: "You are authenticated!", user });
+  })(req, res, next);
+});
 
 router.post("/events", async (req, res) => {
   try {
