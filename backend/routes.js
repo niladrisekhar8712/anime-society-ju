@@ -31,6 +31,20 @@ router.get("/protected", (req, res, next) => {
   })(req, res, next);
 });
 
+
+/////////////////////////////////  EVENTS  //////////////////////////////////////////////////////////////////////////////////
+
+// TO GET ALL EVENTS
+router.get("/events", async (req, res) => {
+  try {
+    const events = await Event.find();
+    res.json(events);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// TO POST A NEW EVENT
 router.post("/events", async (req, res) => {
   try {
     const { event_id, event_name, description, date, pic_link } = req.body;
@@ -42,21 +56,11 @@ router.post("/events", async (req, res) => {
   }
 });
 
-
-router.get("/events", async (req, res) => {
-  try {
-    const events = await Event.find();
-    res.json(events);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-
+// TO GET A SPECIFIC EVENT BY EVENT_ID
 router.get("/events/:eventId", async (req, res) => {
   try {
     const { eventId } = req.params;
-    const event = await Event.findById(eventId);
+    const event = await Event.findOne({"event_id": eventId});
     if (!event) return res.status(404).json({ message: "Event not found" });
 
     const users = await User.find({ registered_events: eventId }).select("name email");
@@ -66,7 +70,30 @@ router.get("/events/:eventId", async (req, res) => {
   }
 });
 
+/////////////////////////////////  USERS  //////////////////////////////////////////////////////////////////////////////////
 
+// TO GET ALL USERS
+router.get("/users", async (req, res) => {
+  try {
+    const users = await User.find().populate("registered_events");
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// TO GET DETAILS ABOUT A SPECIFIC USER
+router.get("/users/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const users = await User.findOne({user_id: userId});
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// TO POST A NEW USER
 router.post("/users", async (req, res) => {
   try {
     const { user_id, name, email } = req.body;
@@ -78,32 +105,26 @@ router.post("/users", async (req, res) => {
   }
 });
 
+/////////////////////////////////  REGISTRATION  //////////////////////////////////////////////////////////////////////////////////
 
-router.get("/users", async (req, res) => {
-  try {
-    const users = await User.find().populate("registered_events");
-    res.json(users);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
+// TO REGISTER A NEW USER FOR AN EVENT
 router.post("/users/:userId/register", async (req, res) => {
   try {
     const { userId } = req.params;
-    const { eventIds } = req.body; 
+    const { event_ids } = req.body; 
 
     const user = await User.findOne({ user_id: userId });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Validate event IDs
-    const events = await Event.find({ _id: { $in: eventIds } });
-    if (events.length !== eventIds.length) {
-      return res.status(400).json({ message: "Some events do not exist" });
+    const existingEvents = await Event.find({ event_id: { $in: event_ids } });
+    const validEventIds = existingEvents.map(event => event.event_id);
+    const invalidEventIds = event_ids.filter(id => !validEventIds.includes(id));
+
+    if (invalidEventIds.length > 0) {
+      return res.status(400).json({ message: "Some events do not exist", invalidEventIds });
     }
 
-    // Register user for events (avoid duplicates)
-    user.registered_events = [...new Set([...user.registered_events, ...eventIds])];
+    user.registered_events = [...new Set([...user.registered_events, ...validEventIds])];
     await user.save();
 
     res.json({ message: "User registered for events", user });
@@ -112,12 +133,18 @@ router.post("/users/:userId/register", async (req, res) => {
   }
 });
 
+
+// TO UNREGISTER AN USER FROM AN EVENT
 router.delete("/users/:userId/unregister/:eventId", async (req, res) => {
   try {
     const { userId, eventId } = req.params;
 
     const user = await User.findOne({ user_id: userId });
     if (!user) return res.status(404).json({ message: "User not found" });
+    const event = await Event.findOne({event_id: eventId});
+    if(!event) return res.status(404).json({ message: "Event not found" }); // event does not exist
+    
+
 
     user.registered_events = user.registered_events.filter(id => id.toString() !== eventId);
     await user.save();
@@ -127,5 +154,6 @@ router.delete("/users/:userId/unregister/:eventId", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 export default router;
